@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Scraper</title>
+	<head>
+	<script src="https://code.jquery.com/jquery-3.1.1.min.js" crossorigin="anonymous"></script>
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/semantic-ui@2.4.2/dist/semantic.min.css">
+	<script src="https://cdn.jsdelivr.net/npm/semantic-ui@2.4.2/dist/semantic.min.js"></script>
+</head>
+</head>
+<body>
+	<div class="ui container" style="padding: 10px">
+		<h1 class="ui header">Scrape Products Demo</h1>
+		<form method="get" action="/scrapper/scrape" class="ui form">
+		  <div class="field">
+		    <label>Keyword</label>
+		    <input type="text" name="keyword" placeholder="First Name">
+		  </div>
+		 
+		  <button class="ui button" type="submit">Search</button>
+		</form>
+		<div>
+		{% if mainDict %}	
+		<div class="ui segment">
+			<div class="ui stackable stretched three column grid">
+			 {% for item in mainDict %}
+				 	<div class="column" style="margin: auto">
+						<div class="ui card">
+						  <div class="ui slide masked reveal image">
+						    <img src="{{item.image}}" class="visible content">
+						  </div>
+						  <div class="content">
+						    <a class="header">{{item.title}}</a>
+						    
+						  </div>
+						  <div class="extra content">
+						    KeySpecs: {{item.keySpecs}}<br />
+						    Price: {{item.price}}<br />
+						    Discount: {{item.discount}}<br />
+						    Rating: {{item.rating}}<br />
+						  </div>
+						</div>
+					</div>
+			 {% endfor %}
+			</div>
+		</div>
+		{% endif %}
+</div>
+</body>
+</html>
