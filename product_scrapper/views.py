@@ -6,8 +6,7 @@ import json
 from django.template.loader import render_to_string
 import sys
 import json
-import threading 
-# import MySQLdb
+import threading
 import pymysql
 from datetime import datetime
 
@@ -81,22 +80,49 @@ def getDescription(request):
 	else:
 		return JsonResponse(main,safe=False)
 
+
+
+def check_for_saved_autosuggestion(search_query):
+	c,conn = connection()
+	query = "select suggestion from autosuggestion where keyword='"+search_query+"' or suggestion like '%"+search_query+"%'";
+	c.execute(query)
+	main = []
+	for i in c.fetchall():
+		main.append({'title':i[0]})
+	return main
+
+def save_autosuggestion(search_query,keyword_list):
+	c,conn = connection()
+	for suggestion in keyword_list:
+		query = "INSERT INTO `autosuggestion` (`id`, `keyword`, `suggestion`) VALUES (NULL, '"+search_query+"', '"+suggestion['title']+"');"
+		c.execute(query)
+	conn.commit()
+
 def autosuggestion(request):
 	query = request.GET['query']
-	URL = "https://www.snapdeal.com/app/get/json/autoSuggestions?sr=true&num=20&ss="+query
-	json_data = requests.get(URL).json()
-	keyword_list = []
-	for keyword in json_data['responseAutosuggestions']:
-		keyword_list.append({"title":keyword['keyword']})
-	for keyword in json_data['unstructured']:
-		keyword_list.append({"title":keyword['keyword']})
-	keyword_list = (keyword_list)
-	context = {
-		"results": keyword_list
-		,
-		"total":len(keyword_list)
-	}
-	return JsonResponse(context,safe=False)
+	mainDict = check_for_saved_autosuggestion(query)
+	if(mainDict == []):
+		URL = "https://www.snapdeal.com/app/get/json/autoSuggestions?sr=true&num=20&ss="+query
+		json_data = requests.get(URL).json()
+		keyword_list = []
+		for keyword in json_data['responseAutosuggestions']:
+			keyword_list.append({"title":keyword['keyword']})
+		for keyword in json_data['unstructured']:
+			keyword_list.append({"title":keyword['keyword']})
+		t = threading.Thread(target=save_autosuggestion,args=(query,keyword_list))
+		t.start()
+		context = {
+			"results": keyword_list
+			,
+			"total":len(keyword_list)
+		}
+		return JsonResponse(context,safe=False)
+	else:
+		context = {
+			"results": mainDict,
+			"total":len(mainDict)
+		}
+		return JsonResponse(context,safe=False)
 
 
 
@@ -116,18 +142,27 @@ def save_products(mainDict,vender_type,keyword):
 
 def check_for_saved(vender_type,keyword,filter):
 	c,conn = connection()
+
 	if filter == "relevance":
-		query = "select * from products where vender_type='"+vender_type+"' and keyword='"+keyword+"';"
+		if(vender_type == "all"):
+			query = "select * from products where title like '%"+keyword+"%' or keyword='"+keyword+"';"
+		else:
+			query = "select * from products where vender_type='"+vender_type+"' and keyword='"+keyword+"';"
 	elif filter == "rating":
-		query = "select * from products where vender_type='"+vender_type+"' and keyword='"+keyword+"' order by rating DESC;"
+		if(vender_type == "all"):
+			query = "select * from products where title like '%"+keyword+"%' or keyword='"+keyword+"' order by rating DESC;"
+		else:
+			query = "select * from products where vender_type='"+vender_type+"' and keyword='"+keyword+"' order by rating DESC;"
 	elif filter == "h-l":
-		query = "select * from products where vender_type='"+vender_type+"' and keyword='"+keyword+"' order by price DESC;"
+		if(vender_type == "all"):
+			query = "select * from products where title like '%"+keyword+"%' or keyword='"+keyword+"' order by price DESC;"
+		else:
+			query = "select * from products where vender_type='"+vender_type+"' and keyword='"+keyword+"' order by price DESC;"
 	elif filter == "l-h":
-		query = "select * from products where vender_type='"+vender_type+"' and keyword='"+keyword+"' order by price;"
-
-
-
-	# print(query)
+		if(vender_type == "all"):
+			query = "select * from products where title like '%"+keyword+"%' or keyword='"+keyword+"' order by price;";
+		else:
+			query = "select * from products where vender_type='"+vender_type+"' and keyword='"+keyword+"' order by price;"
 	c.execute(query)
 	mainDict = []
 	for i in c.fetchall():
@@ -135,10 +170,12 @@ def check_for_saved(vender_type,keyword,filter):
 			"id":i[0],
 			"url":i[1],
 			"image":i[2],
-			"title":i[3],
+			"vender_type":i[3],
+			"keyword":i[4],
+			"title":i[5],
 			"price":i[6],
-			"rating":i[8],
 			"rating_count":i[7],
+			"rating":i[8],
 			"mrp":i[9],
 			"discount":i[10],
 			"created_at":i[11]
@@ -155,12 +192,23 @@ def update_5_days(item,vender_type,keyword):
 	else:
 		return None
 
+
+def save_all_products(all_vendor,keyword):
+	for i in all_vendor:
+				vendor = i[0]
+				vendor_products = i[1](keyword)
+				t = threading.Thread(target=save_products,args=(vendor_products,i[0],keyword))
+				t.start()
+
+
 def scrape(request,type):
 	keyword = request.GET['keyword']
 	filter = request.GET['filter']
 	mainDict = check_for_saved(type,keyword,filter);
 	if(len(mainDict)  == 0):
-		mainDict = []
+		all_vendor = [["flipkart",getFlipkart],["snapdeal",getSnapDeal],["tatacliq",getTataCliq],["amazon",getAmazon]]
+		mainDict = []		
+		
 		if(type == "flipkart"):
 			mainDict = getFlipkart(keyword)
 		elif(type == "snapdeal"):
@@ -171,6 +219,13 @@ def scrape(request,type):
 			mainDict = getAmazon(keyword)
 		t = threading.Thread(target=save_products,args=(mainDict,type,keyword))
 		t.start()
+
+		if(type == "all"):
+			t = threading.Thread(target=save_all_products,args=(all_vendor,keyword))
+			t.start()
+			mainDict = getAmazon(keyword)
+			type = "amazon"
+			
 	context = {
 		'query':keyword,
 		'type':type,
@@ -283,6 +338,7 @@ def getAmazon(keyword):
 	    		'price':sale_price,
 	    		'rating_count':rating_count,
 	    		'rating':rating,
+	    		"vender_type":"amazon",
 	    		'mrp':mrp,
 	    		'discount':int(mrp)-int(sale_price),
 	    	})
@@ -311,6 +367,7 @@ def getTataCliq(keyword):
 	        'rating':rating,
 	        'price':round(sale_price),
 	        'mrp':round(mrp),
+	        "vender_type":"tatacliq",
 	        'discount':round(discount),
 	        'image':image,
 	        'rating_count':rating_count
@@ -348,6 +405,7 @@ def getSnapDeal(keyword):
 	        'rating_count':rating_count,
 	        'rating':rating,
 	        'mrp':mrp,
+	        "vender_type":"snapdeal",
 	        'discount':discount
 	    }
 	    mainPack.append(pack)
@@ -409,6 +467,7 @@ def getFlipkart(keyword):
 	        'mrp':mrp,
 	        'rating':rating,
 	        'rating_count':rating_count,
+	        "vender_type":"flipkart",
 	        'discount':mrp-sale_price
 	    })
 
