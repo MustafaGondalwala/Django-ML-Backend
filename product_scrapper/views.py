@@ -114,9 +114,19 @@ def save_products(mainDict,vender_type,keyword):
 			print(str(e))
 	conn.commit()
 
-def check_for_saved(vender_type,keyword):
+def check_for_saved(vender_type,keyword,filter):
 	c,conn = connection()
-	query = "select * from products where vender_type='"+vender_type+"' and keyword='"+keyword+"';"
+	if filter == "relevance":
+		query = "select * from products where vender_type='"+vender_type+"' and keyword='"+keyword+"';"
+	elif filter == "rating":
+		query = "select * from products where vender_type='"+vender_type+"' and keyword='"+keyword+"' order by rating DESC;"
+	elif filter == "h-l":
+		query = "select * from products where vender_type='"+vender_type+"' and keyword='"+keyword+"' order by price DESC;"
+	elif filter == "l-h":
+		query = "select * from products where vender_type='"+vender_type+"' and keyword='"+keyword+"' order by price;"
+
+
+
 	# print(query)
 	c.execute(query)
 	mainDict = []
@@ -127,8 +137,8 @@ def check_for_saved(vender_type,keyword):
 			"image":i[2],
 			"title":i[3],
 			"price":i[6],
-			"rating":i[7],
-			"rating_count":i[8],
+			"rating":i[8],
+			"rating_count":i[7],
 			"mrp":i[9],
 			"discount":i[10],
 			"created_at":i[11]
@@ -147,7 +157,8 @@ def update_5_days(item,vender_type,keyword):
 
 def scrape(request,type):
 	keyword = request.GET['keyword']
-	mainDict = check_for_saved(type,keyword);
+	filter = request.GET['filter']
+	mainDict = check_for_saved(type,keyword,filter);
 	if(len(mainDict)  == 0):
 		mainDict = []
 		if(type == "flipkart"):
@@ -276,8 +287,6 @@ def getAmazon(keyword):
 	    		'discount':int(mrp)-int(sale_price),
 	    	})
 	return mainPack
-    
-    
 def getTataCliq(keyword):
 	query = keyword
 	URL = "https://www.tatacliq.com/marketplacewebservices/v2/mpl/products/searchProducts/?searchText="+query+"%3Arelevance%3AinStockFlag%3Atrue&isKeywordRedirect=false&isKeywordRedirectEnabled=true&channel=WEB&isTextSearch=false&isFilter=false&page=0&isPwa=true&pageSize=40&typeID=all"
